@@ -837,7 +837,7 @@ export async function startServer(bus: FeetechBus, options: ServerOptions = {}):
             await bus.syncWrite(STS3215.Goal_Position, targets);
             const deadline = Date.now() + 4000;
             const wanted = new Map(targets);
-            while (Date.now() < deadline) {
+            while (Date.now() < deadline && ws.readyState === ws.OPEN) { // a closed socket (Stop) ends the catch-up at once
               const positions = await bus.syncRead([...wanted.keys()], STS3215.Present_Position);
               const loads = await bus.syncRead([...wanted.keys()], STS3215.Present_Load);
               let worst = 0;

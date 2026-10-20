@@ -163,10 +163,28 @@ and trim. On a stream, a joint that pushes hard without moving is a jam: it
 is parked where it is and follows again once the leader backs off. Jams,
 blocks, stalls, peak loads and temperatures go to `metrics.jsonl`.
 
-On the Pi, camera 1 is pinned by its `/dev/v4l/by-id` name in
-`/etc/so101/camera1` and served by `so101-camera@1.service` on port 8080;
-`so101-camera@2.service` serves the first other camera on 8081 as soon as it
-is plugged in. To set one up by hand:
+**Running on a Raspberry Pi.** The service files in `so101/deploy/pi/` are
+the ones running on the author's Pi 4 (DietPi, Node 24, Bun for the install):
+
+```sh
+# on the Pi, from a copy of Software/so101 at /home/dietpi/so101 (rsync, without node_modules)
+cd /home/dietpi/so101 && bun install --frozen-lockfile
+rsync Simulation/SO101/{*.urdf,assets} to /home/dietpi/so101/model/      # the 3D model and the safe zone
+rsync Software/vision/printables to /home/dietpi/so101/printables/        # the sheets the page offers
+sudo apt-get install ustreamer
+sudo install -m 755 deploy/pi/so101-camera /usr/local/bin/
+sudo install -m 644 deploy/pi/so101.service deploy/pi/so101-camera@.service /etc/systemd/system/
+ls /dev/v4l/by-id/*-video-index0 | head -1 | sudo tee /etc/so101/camera1   # pin camera 1 by name
+sudo systemctl enable --now so101.service so101-camera@1.service so101-camera@2.service
+```
+
+`so101.service` runs `so101 serve` on port 8101 with the board at
+`/dev/ttyACM0`. Camera 1 is the device named in `/etc/so101/camera1` and
+streams on port 8080; `so101-camera@2` serves the first other camera on 8081
+as soon as it is plugged in, so plugging a second camera never swaps the
+first. A page change deploys with the rsync alone; a server change needs
+`systemctl restart so101.service`, which ends a running stream (the arm
+holds), so do it while the arm is idle. To run a stream by hand:
 
 ```sh
 sudo apt-get install ustreamer

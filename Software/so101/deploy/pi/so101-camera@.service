@@ -1,0 +1,12 @@
+[Unit]
+Description=so101 webcam %i MJPEG stream (port 8079+%i)
+After=network-online.target
+
+[Service]
+User=dietpi
+ExecStart=/usr/local/bin/so101-camera %i
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

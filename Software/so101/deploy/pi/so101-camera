@@ -1,0 +1,13 @@
+#!/bin/sh
+# so101-camera <n>: ustreamer for camera n on port 8079+n.
+# Camera 1 is the device named in /etc/so101/camera1 (a stable /dev/v4l/by-id path). Camera 2 is the first
+# other USB camera. Plugging a second camera therefore never swaps which one is "camera 1".
+n="${1:-1}"
+pinned=$(cat /etc/so101/camera1 2>/dev/null)
+if [ "$n" = 1 ]; then
+  dev="$pinned"
+else
+  dev=$(ls /dev/v4l/by-id/*-video-index0 2>/dev/null | grep -v -x "$pinned" | sort | sed -n "$((n - 1))p")
+fi
+[ -n "$dev" ] && [ -e "$dev" ] || { echo "camera $n: no device yet" >&2; exit 1; }
+exec /usr/bin/ustreamer --device="$dev" --host=0.0.0.0 --port=$((8079 + n)) --resolution=1280x720 --format=MJPEG --desired-fps=20 --drop-same-frames=30 --allow-origin="*"

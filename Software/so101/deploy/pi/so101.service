@@ -1,0 +1,15 @@
+[Unit]
+Description=so101 arm server (HTTP API + WebSocket stream for the follower)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dietpi
+WorkingDirectory=/home/dietpi/so101
+Environment=SO101_PORT=/dev/ttyACM0
+ExecStart=/usr/bin/node /home/dietpi/so101/bin/so101 serve --listen 0.0.0.0:8101 --file /home/dietpi/so101/poses.json
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

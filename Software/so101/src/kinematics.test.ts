@@ -17,10 +17,12 @@ describe("matrices", () => {
   });
 
   test("the xml reader handles self-closing tags, comments and nesting", () => {
-    const root = parseXml(`<?xml version="1.0"?><robot name="r"><!-- c --><joint name="j" type="revolute"><origin xyz="1 2 3"/><axis xyz="0 0 1"/></joint></robot>`);
+    const root = parseXml(`<?xml version="1.0"?><robot name="r"><!-- c --><joint name='j' type="revolute"><origin xyz='1 2 3'/><axis xyz="0 0 1"/></joint></robot>`);
     const robot = root.children[0]!;
     expect(robot.attrs.name).toBe("r");
+    expect(robot.children[0]!.attrs.name).toBe("j"); // single quotes too
     expect(robot.children[0]!.children.map((c) => c.name)).toEqual(["origin", "axis"]);
+    expect(robot.children[0]!.children[0]!.attrs.xyz).toBe("1 2 3");
   });
 });
 

@@ -73,8 +73,8 @@ export function parseXml(text: string): Node {
       continue;
     }
     const attrs: Record<string, string> = {};
-    const attr = /([\w:.-]+)\s*=\s*"([^"]*)"/g;
-    for (let a = attr.exec(rawAttrs!); a; a = attr.exec(rawAttrs!)) attrs[a[1]!] = a[2]!;
+    const attr = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+    for (let a = attr.exec(rawAttrs!); a; a = attr.exec(rawAttrs!)) attrs[a[1]!] = a[2] ?? a[3] ?? "";
     const node: Node = { name: name!, attrs, children: [] };
     stack[stack.length - 1]!.children.push(node);
     if (!selfClosing) stack.push(node);
