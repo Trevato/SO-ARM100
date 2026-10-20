@@ -526,6 +526,8 @@
     table.position.z = modelInfo.floorZ - 0.0005;
     const grid = new THREE.GridHelper(0.9, 18, 0x4a5058, 0x30363d); grid.rotation.x = Math.PI / 2; grid.position.z = modelInfo.floorZ;
     marker = new THREE.Mesh(new THREE.SphereGeometry(0.012, 16, 12), new THREE.MeshBasicMaterial({ color: 0xf85149 })); marker.visible = false;
+    // Not for the mouse: the drag controls take the first thing a ray hits, and three.js hits a line from a metre away.
+    for (const o of [table, grid, marker]) o.raycast = () => {};
     viewer.world.add(table, grid, marker);
     viewer.plane.visible = false; // the element's own shadow plane sits under the lowest part, which would be below the table
     if (status) applyModel(status);
@@ -535,6 +537,16 @@
     viewer.controls.update();
     viewer.recenter();
   });
+  // The drag controls listen for mouse events only. A finger is translated into them, so the model can be dragged on a phone or an iPad.
+  {
+    const canvas = viewer.renderer.domElement;
+    canvas.style.touchAction = "none";
+    const asMouse = (type, t) => canvas.dispatchEvent(new MouseEvent(type, { clientX: t.clientX, clientY: t.clientY, bubbles: true }));
+    canvas.addEventListener("touchstart", (e) => { if (e.touches.length === 1) asMouse("mousedown", e.touches[0]); }, { passive: true });
+    canvas.addEventListener("touchmove", (e) => { if (e.touches.length === 1 && dragging) { e.preventDefault(); asMouse("mousemove", e.touches[0]); } }, { passive: false });
+    canvas.addEventListener("touchend", (e) => { if (dragging) asMouse("mouseup", e.changedTouches[0]); }, { passive: true });
+    canvas.addEventListener("touchcancel", (e) => { if (dragging) asMouse("mouseup", e.changedTouches[0]); }, { passive: true });
+  }
   viewer.addEventListener("manipulate-start", (e) => { dragging = e.detail; stream.open(); });
   viewer.addEventListener("manipulate-end", () => { dragging = null; stream.end(); });
   viewer.addEventListener("angle-change", (e) => {
