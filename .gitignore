@@ -1,1 +1,7 @@
 .DS_Store
+.direnv/
+.venv/
+node_modules/
+poses.json
+outputs/
+__pycache__/
