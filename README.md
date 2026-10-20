@@ -28,6 +28,7 @@ These arms are designed to work seamlessly with the open‑source 🤗 LeRobot l
 
 ### Documentation 📖
 - For the SO‑101 docs, follow this page further.
+- Software to drive what you built: [`Software/README.md`](Software/README.md): a Nix dev shell with LeRobot, a TypeScript servo driver and CLI, a browser app with a live 3D model, a safe zone and teleoperation over the network, and a camera-guided pick (`Software/vision/QUEST.md`).
 - Here you can find the [SO‑100 docs](SO100.md) which is deprecated.
 
 ### Getting Your Own SO‑101 
