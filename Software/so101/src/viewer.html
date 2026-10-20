@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>SO-101</title>
+<script type="importmap">
+{ "imports": {
+  "three": "/vendor/three/build/three.module.js",
+  "three/examples/jsm/": "/vendor/three/examples/jsm/",
+  "urdf-loader/manipulator": "/vendor/urdf-loader/src/urdf-manipulator-element.js"
+} }
+</script>
+<style>
+  :root { color-scheme: dark; --bg: #0b0d10; --fg: #e8eaed; --dim: #9aa4ae; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --line: #30363d; --btn: #21262d; --blue: #388bfd; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; overflow: hidden; }
+  #app { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; background: #000; }
+  #stage { flex: 1; min-height: 0; display: flex; gap: 2px; }
+  .pane { flex: 1; min-width: 0; position: relative; background: #000; display: none; }
+  .pane.on { display: block; }
+  .pane img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .pane .tag { position: absolute; left: 8px; top: 8px; font-size: 11px; color: var(--dim); background: rgba(0,0,0,.5); padding: 2px 6px; border-radius: 4px; }
+  urdf-viewer { display: block; width: 100%; height: 100%; }
+  @media (max-aspect-ratio: 1/1) { #stage { flex-direction: column; } }
+  #top { position: absolute; top: 8px; right: 10px; z-index: 5; display: flex; gap: 8px; align-items: center; font-size: 13px; background: rgba(0,0,0,.65); padding: 5px 6px 5px 10px; border-radius: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  #top .seg button { padding: 5px 9px; min-height: 30px; } #top .seg button.on { background: var(--blue); border-color: var(--blue); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); display: inline-block; } .dot.on { background: var(--ok); }
+  #banner { position: absolute; top: 54px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: min(640px, 90vw); padding: 8px 14px; border-radius: 8px; font-size: 13px; background: rgba(0,0,0,.75); border: 1px solid var(--line); display: none; }
+  #banner.bad { display: block; border-color: var(--bad); color: #ffb3ad; } #banner.warn { display: block; border-color: var(--warn); color: #f2cc60; }
+  #hud { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: #0d1117; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; max-height: 46%; overflow: auto; }
+  #hud[hidden] { display: none; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #joints { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 4px 12px; }
+  .j { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name val" "slide slide"; align-items: center; column-gap: 6px; padding: 2px 0; border-radius: 6px; }
+  .j.jam { background: rgba(248,81,73,.18); } .j.drag { background: rgba(56,139,253,.15); }
+  .j b { grid-area: name; font-size: 11px; color: #c9d1d9; letter-spacing: .03em; text-transform: uppercase; font-weight: 600; }
+  .j .v { grid-area: val; display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; font-size: 15px; }
+  .j small { color: var(--dim); font-size: 11px; }
+  .j .slide { grid-area: slide; display: flex; align-items: center; gap: 4px; }
+  .j input[type=range] { flex: 1; min-width: 0; accent-color: var(--blue); height: 22px; }
+  .j .jog button { min-width: 30px; min-height: 28px; padding: 0 6px; font-size: 15px; line-height: 1; touch-action: none; user-select: none; }
+  button { background: var(--btn); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; min-height: 34px; font: inherit; cursor: pointer; }
+  button:hover { background: #30363d; } button:disabled { opacity: .4; cursor: default; }
+  button.danger { border-color: var(--bad); color: var(--bad); } button.go { border-color: var(--blue); } button.rec { border-color: var(--bad); }
+  button.x { padding: 0 8px; min-height: 26px; color: var(--bad); font-size: 13px; }
+  .pose { display: inline-flex; gap: 4px; align-items: center; }
+  select, input[type=number] { background: var(--btn); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-height: 34px; font: inherit; }
+  input[type=number] { width: 80px; }
+  label.inline { display: inline-flex; gap: 6px; align-items: center; color: var(--dim); font-size: 12px; }
+  #msg { color: var(--dim); font-size: 12px; min-height: 1.2em; } #msg.bad { color: var(--bad); }
+  #strip { color: var(--dim); font-size: 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+  #strip b { color: var(--fg); font-weight: 500; }
+  dialog { background: #161b22; color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; min-width: min(360px, 92vw); max-width: 92vw; }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h3 { margin: 0 0 10px; font-size: 15px; } dialog p { margin: 6px 0; color: var(--dim); font-size: 13px; }
+  dialog input[type=text] { width: 100%; font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: #0d1117; color: var(--fg); }
+  dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .list { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow: auto; margin: 8px 0; }
+  .list .item { display: flex; gap: 8px; align-items: center; } .list .item span { flex: 1; }
+  .panel { position: absolute; inset: 0; z-index: 10; overflow: auto; background: rgba(11,13,16,.97); padding: 24px max(18px, env(safe-area-inset-right)) 40px max(18px, env(safe-area-inset-left)); }
+  .panel[hidden] { display: none; }
+  .panel article { max-width: 760px; margin: 0 auto; }
+  .panel h2 { margin: 0 0 12px; font-size: 20px; } .panel h3 { margin: 18px 0 6px; font-size: 15px; }
+  .panel p, .panel li { color: #c9d1d9; font-size: 14px; line-height: 1.5; } .panel ol, .panel ul { padding-left: 20px; }
+  .panel a { color: #58a6ff; } .refs li { margin-bottom: 6px; font-size: 13px; }
+  .panel pre { background: #0d1117; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; overflow: auto; }
+  .panel .close { position: absolute; top: 12px; right: 14px; }
+  .status { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; margin: 8px 0; } .status b { color: var(--dim); font-weight: 500; }
+  .ok { color: var(--ok); } .no { color: var(--warn); }
+  table { border-collapse: collapse; font-size: 13px; } td, th { padding: 4px 10px; border-bottom: 1px solid var(--line); text-align: left; } th { color: var(--dim); font-weight: 500; }
+  .events { font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } .events div { padding: 2px 0; border-bottom: 1px solid #1b2129; }
+  .trim { display: grid; grid-template-columns: max-content auto; gap: 6px 12px; align-items: center; max-width: 360px; }
+  :fullscreen #hud { opacity: .35; transition: opacity .3s; } :fullscreen #hud:hover { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div class="pane on" id="pane1"><img id="cam1" alt="camera 1"><span class="tag" id="tag1">camera 1</span></div>
+    <div class="pane" id="pane2"><img id="cam2" alt="camera 2"><span class="tag" id="tag2">camera 2</span></div>
+    <div class="pane on" id="pane3"><urdf-viewer id="model" up="Z" ignore-limits display-shadow ambient-color="#b9c0c8"></urdf-viewer><span class="tag">3D · drag a joint to move the arm · drag empty space to orbit</span></div>
+  </div>
+  <div id="top">
+    <span class="seg"><button id="v1" class="on">Cam 1</button><button id="v2" hidden>Cam 2</button><button id="v3" class="on">3D</button></span>
+    <span id="live"></span><span class="dot" id="dot"></span><span id="state">…</span>
+    <button id="zoneBadge" title="safe zone settings">zone</button>
+    <button id="stop" class="danger" hidden title="space">Stop</button><button id="fs" title="F">Fullscreen</button>
+  </div>
+  <div id="banner"></div>
+  <div id="hud">
+    <div id="joints"></div>
+    <div class="row" id="poses"></div>
+    <div class="row">
+      <label class="inline">jog <select id="rate"><option value="100">slow</option><option value="300" selected>medium</option><option value="800">fast</option></select></label>
+      <button id="hold" title="torque on, stay where it is">Hold</button>
+      <button id="releaseBtn" class="danger" title="torque off">Release</button>
+      <button id="record" class="rec">● Record</button>
+      <button id="play">▶ Play…</button>
+      <button id="liveBtn" class="go" hidden title="read the leader arm through this computer's USB port and stream it (Chrome)">Live from leader</button>
+      <button id="metricsBtn">Metrics</button>
+      <button id="settingsBtn">Settings</button>
+      <button id="calib">3D calibration</button>
+    </div>
+    <div id="strip"></div>
+    <div id="msg"></div>
+  </div>
+
+  <div id="metricsPanel" class="panel" hidden>
+    <button class="close" data-close="metricsPanel">Close</button>
+    <article>
+      <h2>Metrics</h2>
+      <div class="status" id="metricsSummary"></div>
+      <h3>Per joint</h3>
+      <table id="peaks"></table>
+      <h3>Recent events</h3>
+      <div class="events" id="events"></div>
+    </article>
+  </div>
+
+  <div id="settingsPanel" class="panel" hidden>
+    <button class="close" data-close="settingsPanel">Close</button>
+    <article>
+      <h2>Safe zone</h2>
+      <p>The server runs every target through the arm's own geometry: the URDF and its meshes. A pose that puts any part below the table, or into the base, is a violation. <b>enforce</b> refuses such moves and holds a stream at the boundary until the leader backs off. <b>warn</b> only reports them, in the banner and the metrics. <b>off</b> skips the check.</p>
+      <div class="row">
+        <label class="inline">mode <select id="zone"><option value="enforce">enforce</option><option value="warn">warn</option><option value="off">off</option></select></label>
+        <label class="inline">table margin <input type="number" id="floorMargin" min="0" max="100" step="1"> mm</label>
+        <label class="inline">base margin <input type="number" id="baseMargin" min="0" max="100" step="1"> mm</label>
+      </div>
+      <h3>Trim the model onto the arm</h3>
+      <p>The model takes the middle of each calibrated range as zero, the LeRobot convention. The real zero can be a few degrees off, which puts the model a centimetre or two away from the arm at the gripper. Compare the 3D view with the camera and adjust a trim until they match. The zone uses the trimmed model.</p>
+      <div class="trim" id="trims"></div>
+    </article>
+  </div>
+
+  <div id="panel" class="panel" hidden>
+    <button class="close" data-close="panel">Close</button>
+    <article>
+      <h2>3D calibration: teach the arm where the camera is</h2>
+      <p>The camera sees a marker. The arm needs that as a position in its own space. Two calibrations give it that.</p>
+      <ol>
+        <li><b>Camera.</b> The lens geometry: focal length and distortion. Found from 15 views of the printed <em>ChArUco board</em>: a checkerboard with a small marker in each white square. Download it below and print it at 100 %. Output: <code>camera.json</code>.</li>
+        <li><b>Hand-eye.</b> The arm holds a marker in 6 to 8 poses. The camera says where the marker is. The arm's model says where the gripper is. The solver finds the camera's position relative to the arm's base. Output: <code>handeye.json</code>.</li>
+      </ol>
+      <p>After both, a cube the camera sees becomes a target the arm can reach. With two cameras, each one gets its own pair of calibrations (<code>camera2</code>, <code>handeye2</code>); two views then give a full orientation.</p>
+      <h3>Print these</h3>
+      <p>Three sheets, at 100 % scale on matte paper. Check with a ruler: a cube marker's black square is 40 mm, a board square 30 mm. Tape the six cube markers on a 40 to 50 mm block, and the gripper marker flat on the outside of the fixed jaw.</p>
+      <div class="row" id="printables">loading…</div>
+      <h3>Status</h3>
+      <div class="status" id="calStatus"></div>
+      <h3>Steps, on the Mac</h3>
+      <pre id="calSteps"></pre>
+      <p>For the poses: press <b>Release</b>, move the arm by hand, press <b>Save pose</b>, and uncheck <em>with gripper</em>. The hand-eye poses need different tilts and rolls of the gripper, with the marker facing the camera.</p>
+      <h3>References</h3>
+      <ul class="refs">
+        <li>Camera calibration: Z. Zhang, <em>A Flexible New Technique for Camera Calibration</em>, IEEE TPAMI 2000, <a href="https://doi.org/10.1109/34.888718" target="_blank" rel="noopener">doi:10.1109/34.888718</a>. OpenCV tutorial: <a href="https://docs.opencv.org/4.x/da/d13/tutorial_aruco_calibration.html" target="_blank" rel="noopener">Calibration with ArUco and ChArUco</a>.</li>
+        <li>ArUco markers and ChArUco boards: S. Garrido-Jurado et al., <em>Automatic generation and detection of highly reliable fiducial markers under occlusion</em>, Pattern Recognition 2014, <a href="https://doi.org/10.1016/j.patcog.2014.01.005" target="_blank" rel="noopener">doi:10.1016/j.patcog.2014.01.005</a>.</li>
+        <li>Pose of one square marker: T. Collins, A. Bartoli, <em>Infinitesimal Plane-Based Pose Estimation</em>, IJCV 2014, <a href="https://doi.org/10.1007/s11263-014-0725-5" target="_blank" rel="noopener">doi:10.1007/s11263-014-0725-5</a> (OpenCV's <code>SOLVEPNP_IPPE_SQUARE</code>).</li>
+        <li>Hand-eye calibration: Tsai &amp; Lenz 1989 <a href="https://doi.org/10.1109/70.34770" target="_blank" rel="noopener">doi:10.1109/70.34770</a>; Park &amp; Martin 1994 <a href="https://doi.org/10.1109/70.326576" target="_blank" rel="noopener">doi:10.1109/70.326576</a>; Daniilidis 1999 <a href="https://doi.org/10.1177/02783649922066213" target="_blank" rel="noopener">doi:10.1177/02783649922066213</a>.</li>
+        <li>Robot-world and hand-eye in one solve, what this kit uses: M. Shah 2013, <a href="https://doi.org/10.1115/1.4024473" target="_blank" rel="noopener">doi:10.1115/1.4024473</a>; A. Li, L. Wang, D. Wu 2010. OpenCV: <a href="https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html" target="_blank" rel="noopener"><code>calibrateRobotWorldHandEye</code></a>.</li>
+        <li>Two cameras, a full orientation: Hartley &amp; Zisserman, <em>Multiple View Geometry in Computer Vision</em>, 2nd ed. 2004 (stereo calibration, triangulation).</li>
+      </ul>
+      <h3>About</h3>
+      <p>This page drives an <a href="https://github.com/TheRobotStudio/SO-ARM100" target="_blank" rel="noopener">SO-101</a>, the open robot arm by The Robot Studio, with the calibration conventions of <a href="https://huggingface.co/docs/lerobot/so101" target="_blank" rel="noopener">Hugging Face LeRobot</a>. The 3D view uses the arm's own URDF through <a href="https://github.com/gkjohnson/urdf-loaders" target="_blank" rel="noopener">urdf-loader</a> and three.js. The code, the build notes and the quest are in the repository's <code>Software/</code> folder.</p>
+    </article>
+  </div>
+
+  <dialog id="saveDlg">
+    <form method="dialog">
+      <h3>Save the current pose</h3>
+      <input type="text" id="saveName" placeholder="name: home, drop, he1 …" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}" required autocomplete="off">
+      <p><label class="inline"><input type="checkbox" id="saveGripper" checked> with gripper (servo 6)</label></p>
+      <p>Poses for the 3D calibration and for pick-and-place are saved without the gripper.</p>
+      <div class="actions"><button value="cancel">Cancel</button><button value="save" class="go">Save</button></div>
+    </form>
+  </dialog>
+  <dialog id="recDlg">
+    <form method="dialog">
+      <h3>Record a motion</h3>
+      <p>CAUTION: torque goes off. Hold the arm before you press Start, then move it by hand. Press Stop recording when done.</p>
+      <input type="text" id="recName" placeholder="name" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}" required autocomplete="off">
+      <div class="actions"><button value="cancel">Cancel</button><button value="start" class="rec">Start</button></div>
+    </form>
+  </dialog>
+  <dialog id="playDlg">
+    <h3>Play a recording</h3>
+    <p>The arm first moves slowly to the recording's first pose. Keep the workspace clear.</p>
+    <div class="list" id="recList"></div>
+    <div class="actions"><label class="inline">rate <select id="playRate"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option></select></label><button id="playClose">Close</button></div>
+  </dialog>
+</div>
+<script type="module">
+  import * as THREE from "three";
+  import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+  import URDFManipulator from "urdf-loader/manipulator";
+  customElements.define("urdf-viewer", URDFManipulator);
+
+  const $ = (id) => document.getElementById(id);
+  const q = new URLSearchParams(location.search);
+  const msg = (text, bad = false) => { $("msg").textContent = text; $("msg").className = bad ? "bad" : ""; };
+  const api = async (path, body, method = body === undefined ? "GET" : "POST") => {
+    const r = await fetch(path, { method, body: body === undefined ? undefined : JSON.stringify(body), cache: "no-store" });
+    const data = await r.json().catch(() => ({}));
+    return Object.defineProperties(data, { ok: { value: r.ok }, status: { value: r.status } });
+  };
+  const NAMES = { 1: "shoulder_pan", 2: "shoulder_lift", 3: "elbow_flex", 4: "wrist_flex", 5: "wrist_roll", 6: "gripper" };
+  const IDS = Object.fromEntries(Object.entries(NAMES).map(([id, n]) => [n, Number(id)]));
+
+  // ---------------------------------------------------------------- cameras
+  // Plain <img> streams work in every browser; a canvas comparison once a second notices a frozen picture and reconnects.
+  const camUrl = (n) => q.get(`stream${n}`) || q.get(n === 1 ? "stream" : "") || `${location.protocol}//${location.hostname}:${8079 + n}/stream`;
+  const cams = [1, 2].map((n) => ({ n, img: $(`cam${n}`), url: camUrl(n), sig: "", unchanged: 0, live: false }));
+  const canvas = document.createElement("canvas"); canvas.width = 32; canvas.height = 18;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const fresh = (url) => url + (url.includes("?") ? "&" : "?") + Date.now();
+  for (const c of cams) {
+    c.img.crossOrigin = "anonymous";
+    c.img.onerror = () => { if ($(`pane${c.n}`).classList.contains("on")) setTimeout(() => (c.img.src = fresh(c.url)), 3000); };
+  }
+  const showCam = (c, on) => { $(`pane${c.n}`).classList.toggle("on", on); c.img.src = on ? fresh(c.url) : ""; };
+  setInterval(() => {
+    for (const c of cams) {
+      if (!$(`pane${c.n}`).classList.contains("on")) continue;
+      let changed = false;
+      try {
+        ctx.drawImage(c.img, 0, 0, 32, 18);
+        const sig = Array.from(ctx.getImageData(0, 0, 32, 18).data.filter((_, i) => i % 16 === 0)).join(",");
+        changed = sig !== c.sig; c.sig = sig;
+      } catch { /* nothing decodable yet */ }
+      c.unchanged = changed ? 0 : c.unchanged + 1;
+      c.live = changed;
+      if (c.unchanged >= 15) { c.img.src = fresh(c.url); c.unchanged = 0; }
+    }
+    $("live").textContent = cams.filter((c) => $(`pane${c.n}`).classList.contains("on")).map((c) => (c.live ? "live" : "waiting")).join(" · ");
+  }, 1000);
+  showCam(cams[0], true);
+  // Camera 2 appears when its stream answers.
+  fetch(cams[1].url.replace(/\/stream.*$/, "/state"), { cache: "no-store" }).then((r) => { if (r.ok) $("v2").hidden = false; }).catch(() => {});
+  const panes = { v1: "pane1", v2: "pane2", v3: "pane3" };
+  for (const [btn, pane] of Object.entries(panes)) {
+    $(btn).onclick = () => {
+      const on = !$(pane).classList.contains("on");
+      if (!on && document.querySelectorAll(".pane.on").length === 1) return; // keep one pane
+      $(btn).classList.toggle("on", on);
+      if (pane === "pane3") $(pane).classList.toggle("on", on); else showCam(cams[pane === "pane1" ? 0 : 1], on);
+      try { localStorage.setItem("so101.panes", JSON.stringify([...document.querySelectorAll(".pane.on")].map((p) => p.id))); } catch {}
+      viewer.recenter?.();
+    };
+  }
+
+  // ---------------------------------------------------------------- the stream: the page as a leader
+  // Opened while a slider, a jog button or a model joint is held; frames go at most every 33 ms; closed shortly after letting go.
+  const stream = {
+    ws: null, pending: null, timer: null, closeTimer: null, halted: false,
+    open() {
+      clearTimeout(this.closeTimer);
+      if (this.ws && this.ws.readyState <= 1) return;
+      if (this.halted) return; // the server ended this hold (Stop, or the arm is busy): nothing more until the next press
+      const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/follow`);
+      ws.onclose = (e) => {
+        if (this.ws !== ws) return;
+        this.ws = null;
+        if (e.code === 1013 || e.code === 1000) { this.halted = true; msg(e.reason || "the arm is busy", true); }
+      };
+      this.ws = ws;
+    },
+    send(frame) {
+      if (this.halted) return;
+      this.open();
+      if (!this.ws) return;
+      this.pending = { ...(this.pending ?? {}), ...frame };
+      if (this.timer) return;
+      this.timer = setTimeout(() => {
+        this.timer = null;
+        const data = JSON.stringify(this.pending); this.pending = null;
+        if (this.ws.readyState === 1) this.ws.send(data);
+        else if (this.ws.readyState === 0) this.ws.addEventListener("open", () => this.ws.send(data), { once: true });
+      }, 33);
+    },
+    end() { clearTimeout(this.closeTimer); this.closeTimer = setTimeout(() => { const ws = this.ws; this.ws = null; this.halted = false; ws?.close(); }, 250); },
+  };
+
+  // ---------------------------------------------------------------- the arm
+  let limits = {}, status = null, poses = {}, editing = false, settings = null, modelInfo = null;
+  const driving = () => status?.driving ?? null;
+  const mid = (id) => (limits[id].min + limits[id].max) / 2;
+  // Arm joints: zero at the middle of the calibrated range (LeRobot's convention). The gripper: closed at the range's
+  // minimum is the jaw's zero, open at the maximum is the URDF's upper limit. Trims are added in degrees.
+  const trim = (id) => (((settings?.jointOffsetsDeg ?? {})[NAMES[id]] ?? 0) * Math.PI) / 180;
+  const gripperOpen = () => modelInfo?.joints?.find((j) => j.name === "gripper")?.upper ?? 1.745;
+  const toRad = (id, ticks) => (id === 6 ? ((ticks - limits[id].min) / (limits[id].max - limits[id].min)) * gripperOpen() : ((ticks - mid(id)) * 2 * Math.PI) / 4095) + trim(id);
+  const toTicks = (id, rad) => Math.round(id === 6 ? limits[id].min + ((rad - trim(id)) / gripperOpen()) * (limits[id].max - limits[id].min) : ((rad - trim(id)) * 4095) / (2 * Math.PI) + mid(id));
+  const clampTicks = (id, t) => Math.max(limits[id].min + 30, Math.min(limits[id].max - 30, Math.round(t)));
+
+  async function loadPoses() {
+    poses = await api("/poses");
+    const row = $("poses"); row.innerHTML = "";
+    for (const name of Object.keys(poses)) {
+      const wrap = document.createElement("span"); wrap.className = "pose";
+      const b = document.createElement("button"); b.textContent = name; b.className = "go"; b.title = `${poses[name].ids.length} joints`;
+      b.onclick = () => goPose(name);
+      wrap.append(b);
+      if (editing) {
+        const x = document.createElement("button"); x.className = "x"; x.textContent = "×"; x.title = "delete";
+        x.onclick = async () => { if (!confirm(`Delete pose "${name}"?`)) return; const r = await api("/pose/delete", { name }); msg(r.ok ? `deleted ${name}` : r.error, !r.ok); loadPoses(); };
+        wrap.append(x);
+      }
+      row.append(wrap);
+    }
+    const save = document.createElement("button"); save.textContent = "＋ Save pose"; save.onclick = () => $("saveDlg").showModal();
+    const edit = document.createElement("button"); edit.textContent = editing ? "done" : "✎"; edit.title = "delete poses";
+    edit.onclick = () => { editing = !editing; loadPoses(); };
+    row.append(save, edit);
+  }
+  async function goPose(name) {
+    msg(`going to ${name}…`);
+    const r = await api("/pose/go", { name });
+    msg(r.reached ? `reached ${name}${r.warning ? ` — ${r.warning}` : ""}` : `${r.error}`, !r.reached);
+  }
+  async function stop() {
+    const r = await api("/stop", {});
+    msg(r.stopped ? `stopped ${r.stopped}${r.saved ? `; saved recording ${r.saved}` : ""}; the arm holds` : "nothing was driving");
+    if (r.saved) loadRecordings();
+  }
+  $("stop").onclick = stop;
+  $("hold").onclick = async () => { const r = await api("/torque", { on: true }); msg(r.ok ? "holding: torque on" : r.error, !r.ok); };
+  $("releaseBtn").onclick = async () => {
+    if (!confirm("Release torque? Hold the arm so it does not fall.")) return;
+    const r = await api("/torque", { on: false }); msg(r.ok ? "torque released: the arm is free" : r.error, !r.ok);
+  };
+  $("saveDlg").addEventListener("close", async () => {
+    if ($("saveDlg").returnValue !== "save") return;
+    const name = $("saveName").value.trim();
+    const ids = $("saveGripper").checked ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5];
+    const r = await api("/pose/save", { name, ids });
+    if (!r.ok) return msg(r.error, true);
+    msg(`saved ${name}` + (r.onStops.length ? ` — joint ${r.onStops.join(", ")} rests on a hard stop; "go" aims 30 ticks inside` : ""));
+    $("saveName").value = "";
+    loadPoses();
+  });
+
+  // ---------------------------------------------------------------- recordings
+  let recordings = {};
+  async function loadRecordings() {
+    recordings = await api("/recordings");
+    const list = $("recList"); list.innerHTML = "";
+    const names = Object.keys(recordings);
+    if (!names.length) list.innerHTML = '<p>No recordings yet. Press ● Record, move the arm by hand, then Stop recording.</p>';
+    for (const name of names) {
+      const item = document.createElement("div"); item.className = "item";
+      const label = document.createElement("span"); label.textContent = `${name} · ${recordings[name].seconds} s`;
+      const play = document.createElement("button"); play.textContent = "▶"; play.className = "go";
+      play.onclick = async () => {
+        $("playDlg").close(); msg(`playing ${name}…`);
+        const r = await api("/play", { name, rate: Number($("playRate").value) });
+        msg(r.ok ? `played ${name}: ${r.played} frames; holding` : r.error, !r.ok);
+      };
+      const x = document.createElement("button"); x.className = "x"; x.textContent = "×";
+      x.onclick = async () => { if (!confirm(`Delete recording "${name}"?`)) return; await api("/recording/delete", { name }); loadRecordings(); };
+      item.append(label, play, x); list.append(item);
+    }
+  }
+  $("record").onclick = async () => {
+    if (driving() === "record") {
+      const r = await api("/record/stop", {});
+      msg(r.ok ? `saved recording ${r.saved}: ${r.frames} frames, ${r.seconds} s; torque is off` : r.error, !r.ok);
+      loadRecordings();
+    } else $("recDlg").showModal();
+  };
+  $("recDlg").addEventListener("close", async () => {
+    if ($("recDlg").returnValue !== "start") return;
+    const name = $("recName").value.trim();
+    const r = await api("/record/start", { name });
+    msg(r.ok ? `recording ${name}: torque is off, move the arm by hand, then press ■ Stop recording` : r.error, !r.ok);
+    $("recName").value = "";
+  });
+  $("play").onclick = () => { loadRecordings(); $("playDlg").showModal(); };
+  $("playClose").onclick = () => $("playDlg").close();
+
+  // ---------------------------------------------------------------- live mode: the leader arm through Web Serial
+  // Chrome can open the leader board's USB serial port from the page. The page then does what `so101 leader` does:
+  // torque off, read the six positions at 60 Hz, map them onto the follower's ranges, and stream them.
+  const REG = { Min_Position_Limit: [9, 2], Max_Position_Limit: [11, 2], Torque_Enable: [40, 1], Present_Position: [56, 2, 15] };
+  const decode = (params, size, signBit) => {
+    let v = 0; for (let k = 0; k < size; k++) v |= params[k] << (8 * k);
+    return signBit !== undefined && v & (1 << signBit) ? -(v & ((1 << signBit) - 1)) : v;
+  };
+  class SerialBus {
+    constructor(port) { this.port = port; this.buf = new Uint8Array(0); this.wake = null; }
+    async open() {
+      await this.port.open({ baudRate: 1000000 });
+      this.writer = this.port.writable.getWriter();
+      this.reader = this.port.readable.getReader();
+      this.pump();
+    }
+    async pump() {
+      try {
+        for (;;) {
+          const { value, done } = await this.reader.read();
+          if (done) break;
+          const joined = new Uint8Array(this.buf.length + value.length); joined.set(this.buf); joined.set(value, this.buf.length); this.buf = joined;
+          this.wake?.();
+        }
+      } catch { /* the port went away */ }
+    }
+    async close() {
+      try { await this.reader?.cancel(); } catch {}
+      try { this.writer?.releaseLock(); } catch {}
+      try { await this.port.close(); } catch {}
+    }
+    packet(id, instruction, params) {
+      const body = [id, params.length + 2, instruction, ...params];
+      return new Uint8Array([0xff, 0xff, ...body, ~body.reduce((a, b) => a + b, 0) & 0xff]);
+    }
+    frames() {
+      const out = []; const b = this.buf; let i = 0;
+      while (i + 4 <= b.length) {
+        if (b[i] !== 0xff || b[i + 1] !== 0xff) { i++; continue; }
+        const id = b[i + 2], len = b[i + 3];
+        if (i + 4 + len > b.length) break;
+        out.push({ id, error: b[i + 4], params: b.slice(i + 5, i + 3 + len) });
+        i += 4 + len;
+      }
+      this.buf = b.slice(i);
+      return out;
+    }
+    tick() { return new Promise((r) => { this.wake = r; setTimeout(r, 2); }); }
+    async syncRead(ids, [address, size, signBit]) {
+      this.buf = new Uint8Array(0);
+      await this.writer.write(this.packet(0xfe, 0x82, [address, size, ...ids]));
+      const got = new Map(); const deadline = performance.now() + 15 + ids.length * 3;
+      while (got.size < ids.length && performance.now() < deadline) {
+        for (const f of this.frames()) if (ids.includes(f.id) && f.params.length === size) got.set(f.id, decode(f.params, size, signBit));
+        if (got.size < ids.length) await this.tick();
+      }
+      return got;
+    }
+    async syncWrite([address, size], pairs) {
+      const params = [address, size];
+      for (const [id, v] of pairs) { params.push(id); for (let k = 0; k < size; k++) params.push((v >> (8 * k)) & 0xff); }
+      await this.writer.write(this.packet(0xfe, 0x83, params));
+    }
+    async read(id, [address, size, signBit]) {
+      this.buf = new Uint8Array(0);
+      await this.writer.write(this.packet(id, 0x02, [address, size]));
+      const deadline = performance.now() + 100;
+      for (;;) {
+        for (const f of this.frames()) if (f.id === id && f.params.length === size) return decode(f.params, size, signBit);
+        if (performance.now() > deadline) throw new Error(`no reply from leader servo ${id}: is the leader board powered and plugged in here?`);
+        await this.tick();
+      }
+    }
+  }
+  let live = null;
+  const midOf = (r) => (r.min + r.max) / 2;
+  const clampTo = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const mapLeader = (positions, leaderLimits) => {
+    const frame = {};
+    for (const [id, ticks] of positions) {
+      const L = leaderLimits[id], F = limits[id]; if (!L || !F) continue;
+      if (id === 6) { const f = clampTo((ticks - L.min) / Math.max(1, L.max - L.min), 0, 1); frame[id] = Math.round(F.min + f * (F.max - F.min)); }
+      else frame[id] = clampTo(Math.round(ticks - midOf(L) + midOf(F)), F.min + 30, F.max - 30);
+    }
+    return frame;
+  };
+  async function startLive() {
+    const port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x1a86 }] }).catch(() => null);
+    if (!port) return;
+    const bus = new SerialBus(port);
+    try {
+      await bus.open();
+      const ids = [1, 2, 3, 4, 5, 6];
+      const leaderLimits = {};
+      for (const id of ids) leaderLimits[id] = { min: await bus.read(id, REG.Min_Position_Limit), max: await bus.read(id, REG.Max_Position_Limit) };
+      await bus.syncWrite(REG.Torque_Enable, ids.map((id) => [id, 0])); // the leader is moved by hand
+      const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/follow`);
+      await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(new Error("no stream socket")); });
+      live = { bus, ws, ids, leaderLimits, frames: 0, busy: false, timer: null };
+      ws.onclose = (e) => { if (live?.ws === ws) stopLive(e.reason || (e.code === 1013 ? "the arm is busy" : "the server closed the stream")); };
+      live.timer = setInterval(async () => {
+        if (!live || live.busy) return;
+        live.busy = true;
+        try {
+          const positions = await bus.syncRead(ids, REG.Present_Position);
+          const frame = mapLeader(positions, leaderLimits);
+          if (ws.readyState === 1 && Object.keys(frame).length) { ws.send(JSON.stringify(frame)); live.frames++; }
+        } catch { /* a missed read; the next tick tries again */ }
+        live.busy = false;
+      }, 16);
+      $("liveBtn").textContent = "■ Stop live";
+      msg("live: the follower follows the leader. CAUTION: it first eases over to the leader's pose.");
+    } catch (err) {
+      await bus.close();
+      msg(`live mode: ${err.message}`, true);
+    }
+  }
+  async function stopLive(reason) {
+    const l = live; if (!l) return;
+    live = null;
+    clearInterval(l.timer);
+    try { l.ws.close(); } catch {}
+    await l.bus.close();
+    $("liveBtn").textContent = "Live from leader";
+    msg(`live mode ended${reason ? `: ${reason}` : ""}; the follower holds (${l.frames} frames)`);
+  }
+  if (navigator.serial) {
+    $("liveBtn").hidden = false;
+    $("liveBtn").onclick = () => (live ? stopLive() : startLive());
+    navigator.serial.addEventListener("disconnect", () => { if (live) stopLive("the leader was unplugged"); });
+  }
+
+  // ---------------------------------------------------------------- the 3D model
+  const viewer = $("model");
+  // The element leaves mesh loading to the page: binary STL through three's loader, the URDF's colour where it names one.
+  viewer.loadMeshFunc = (path, manager, material, done) => {
+    new STLLoader(manager).load(path, (geometry) => done(new THREE.Mesh(geometry, material ?? new THREE.MeshPhongMaterial({ color: 0x9aa4ae, shininess: 30 }))), undefined, (err) => done(null, err));
+  };
+  let dragging = null, table = null, marker = null;
+  viewer.addEventListener("urdf-processed", () => {
+    if (!modelInfo) return;
+    table = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshPhongMaterial({ color: 0x2a2f36, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }));
+    table.position.z = modelInfo.floorZ - 0.0005;
+    const grid = new THREE.GridHelper(0.9, 18, 0x4a5058, 0x30363d); grid.rotation.x = Math.PI / 2; grid.position.z = modelInfo.floorZ;
+    marker = new THREE.Mesh(new THREE.SphereGeometry(0.012, 16, 12), new THREE.MeshBasicMaterial({ color: 0xf85149 })); marker.visible = false;
+    viewer.world.add(table, grid, marker);
+    viewer.plane.visible = false; // the element's own shadow plane sits under the lowest part, which would be below the table
+    if (status) applyModel(status);
+    // A three-quarter view from the front right, close enough for a 40 cm arm (the element starts 10 m away).
+    viewer.camera.position.set(0.5, 0.38, 0.62);
+    viewer.controls.target.set(0.08, 0.1, 0);
+    viewer.controls.update();
+    viewer.recenter();
+  });
+  viewer.addEventListener("manipulate-start", (e) => { dragging = e.detail; stream.open(); });
+  viewer.addEventListener("manipulate-end", () => { dragging = null; stream.end(); });
+  viewer.addEventListener("angle-change", (e) => {
+    if (dragging !== e.detail || !viewer.robot) return;
+    const id = IDS[e.detail]; if (!id || !limits[id]) return;
+    stream.send({ [id]: clampTicks(id, toTicks(id, viewer.robot.joints[e.detail].angle)) });
+  });
+  function applyModel(d) {
+    if (!viewer.robot) return;
+    for (const j of d.joints) {
+      const name = NAMES[j.id];
+      if (!name || j.position == null || name === dragging || !limits[j.id]) continue;
+      viewer.setJointValue(name, toRad(j.id, j.position));
+    }
+    if (marker) {
+      const v = d.blocked ?? d.violation;
+      marker.visible = Boolean(v);
+      if (v) marker.position.set(...v.point);
+    }
+  }
+
+  // ---------------------------------------------------------------- screen
+  const app = $("app");
+  const fullscreen = () => (document.fullscreenElement ? document.exitFullscreen() : app.requestFullscreen());
+  if (app.requestFullscreen) $("fs").onclick = fullscreen; else $("fs").hidden = true;
+  for (const c of cams) c.img.onclick = () => { $("hud").hidden = !$("hud").hidden; };
+  addEventListener("keydown", (e) => {
+    if (e.target.closest("input, select, textarea, dialog")) return;
+    if (e.key === "f" || e.key === "F") fullscreen();
+    if (e.key === " ") { e.preventDefault(); if (e.target instanceof HTMLButtonElement) e.target.blur(); stop(); }
+  });
+  for (const b of document.querySelectorAll("[data-close]")) b.onclick = () => { $(b.dataset.close).hidden = true; };
+
+  // ---------------------------------------------------------------- settings
+  async function loadSettings() {
+    settings = await api("/settings");
+    $("zone").value = settings.zone; $("floorMargin").value = settings.floorMarginMm; $("baseMargin").value = settings.baseMarginMm;
+    const trims = $("trims"); trims.innerHTML = "";
+    for (const [id, name] of Object.entries(NAMES)) {
+      const label = document.createElement("label"); label.textContent = name;
+      const input = document.createElement("input"); input.type = "number"; input.min = -30; input.max = 30; input.step = 0.5; input.value = settings.jointOffsetsDeg[name] ?? 0;
+      input.onchange = () => saveSettings({ jointOffsetsDeg: { [name]: Number(input.value) || 0 } });
+      trims.append(label, input);
+    }
+    $("zoneBadge").textContent = `zone: ${settings.model ? settings.zone : "no model"}`;
+    $("zoneBadge").style.borderColor = settings.zone === "enforce" ? "var(--ok)" : settings.zone === "warn" ? "var(--warn)" : "var(--line)";
+  }
+  async function saveSettings(patch) {
+    const r = await api("/settings", patch, "PUT");
+    if (!r.ok) return msg(r.error, true);
+    msg("settings saved");
+    loadSettings();
+  }
+  $("zone").onchange = () => saveSettings({ zone: $("zone").value });
+  $("floorMargin").onchange = () => saveSettings({ floorMarginMm: Number($("floorMargin").value) });
+  $("baseMargin").onchange = () => saveSettings({ baseMarginMm: Number($("baseMargin").value) });
+  $("settingsBtn").onclick = $("zoneBadge").onclick = () => { loadSettings(); $("settingsPanel").hidden = false; };
+
+  // ---------------------------------------------------------------- metrics
+  async function showMetrics() {
+    const m = await api("/metrics");
+    const c = m.counters;
+    $("metricsSummary").innerHTML = [
+      ["since", (m.since ?? "").replace("T", " ").slice(0, 19)],
+      ["jams", c.jam], ["zone blocks", c.block], ["stalls on moves", c.stall], ["lost servos", c.missing], ["hot joints", c.hot],
+      ["sessions", `${c.stream} streams · ${c.move} moves · ${c.play} playbacks · ${c.record} recordings`],
+      ["closest to the table", m.closest ? `${(m.closest.z * 1000).toFixed(0)} mm (${m.closest.link.replace(/_link$/, "")}, ${m.closest.at.slice(11, 19)})` : "—"],
+    ].map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("");
+    $("peaks").innerHTML = "<tr><th>joint</th><th>peak load</th><th>peak temperature</th></tr>" + Object.entries(m.peaks).map(([id, p]) => `<tr><td>${NAMES[id] ?? id}</td><td>${p.load.toFixed(0)} %</td><td>${p.temperature} °C</td></tr>`).join("");
+    $("events").innerHTML = [...(m.recent ?? [])].reverse().map((e) => `<div>${e.t.slice(5, 19).replace("T", " ")} <b>${e.kind}</b> ${Object.entries(e.detail).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" ")}</div>`).join("") || "<div>none yet</div>";
+    $("metricsPanel").hidden = false;
+  }
+  $("metricsBtn").onclick = showMetrics;
+  setInterval(() => { if (!$("metricsPanel").hidden) showMetrics(); }, 5000);
+
+  // ---------------------------------------------------------------- 3D calibration
+  $("calib").onclick = async () => {
+    $("panel").hidden = false;
+    $("calSteps").textContent = [
+      `export SO101_ARM=http://${location.host}`,
+      `export SO101_CAMERA=${cams[0].url}`,
+      `just vision-calibrate     # hold the printed board in front of the camera, tilt it`,
+      `# save poses from this page: home, drop, he1 … he8 (without gripper)`,
+      `just vision-handeye he1,he2,he3,he4,he5,he6,he7,he8`,
+      `just vision-rehearse      # sees the cube, plans the joints, moves nothing`,
+      `just vision-pick`,
+      ``,
+      `# camera 2, once it streams: SO101_CAMERA=${cams[1].url} and --publish-as camera2 / handeye2`,
+    ].join("\n");
+    const sheets = await api("/printables");
+    $("printables").innerHTML = Array.isArray(sheets) && sheets.length
+      ? sheets.map((s) => `<a href="${s.url}" download="${s.file}"><button class="go">⬇ ${s.file.replace(/_/g, " ").replace(/\.png$/, "")}</button></a>`).join("")
+      : "<span>no printables on this server: copy Software/vision/printables next to the package</span>";
+    const cal = await api("/calibration");
+    const saved = await api("/poses");
+    const poseNames = Object.keys(saved);
+    const he = poseNames.filter((n) => /^he\d+$/.test(n) && !saved[n].ids.includes(6)).length;
+    const mark = (ok, yes, no) => `<span class="${ok ? "ok" : "no"}">${ok ? yes : no}</span>`;
+    const armOnly = (name) => !saved[name] ? mark(false, "", "missing") : saved[name].ids.includes(6) ? mark(false, "", "saved with the gripper: save it again without") : mark(true, "saved");
+    const camLine = (c) => c ? mark(true, `calibrated ${(c.saved ?? "").slice(0, 10)} · ${c.width}×${c.height} · ${Number(c.rms).toFixed(2)} px error`) : mark(false, "", "not yet");
+    const heLine = (h) => h ? mark(true, `solved ${(h.saved ?? "").slice(0, 10)} · ${h.poses?.length ?? "?"} poses · mean ${h.residuals_mm ? (h.residuals_mm.reduce((a, b) => a + b, 0) / h.residuals_mm.length).toFixed(1) : "?"} mm`) : mark(false, "", "not yet");
+    $("calStatus").innerHTML = [
+      ["camera 1", camLine(cal.camera)], ["hand-eye 1", heLine(cal.handeye)],
+      ...($("v2").hidden ? [] : [["camera 2", camLine(cal.camera2)], ["hand-eye 2", heLine(cal.handeye2)]]),
+      ["pose home", armOnly("home")], ["pose drop", armOnly("drop")],
+      ["poses he1…", mark(he >= 6, `${he} saved`, `${he} of 6 to 8 saved (without the gripper)`)],
+    ].map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("");
+  };
+
+  // ---------------------------------------------------------------- live status, sliders and jog
+  const joints = $("joints");
+  const built = new Map();
+  let sliding = null;
+  function render(d) {
+    for (const j of d.joints) {
+      let el = built.get(j.id);
+      if (!el) {
+        const lim = limits[j.id] ?? { min: 0, max: 4095 };
+        const div = document.createElement("div"); div.className = "j";
+        div.innerHTML = `<b>${j.joint ?? j.id}</b><div class="v"><span class="pos"></span><small class="t"></small></div>
+          <div class="slide"><span class="jog"><button data-d="-1">−</button></span><input type="range" min="${lim.min + 30}" max="${lim.max - 30}" step="1"><span class="jog"><button data-d="1">+</button></span></div>`;
+        const range = div.querySelector("input");
+        range.addEventListener("pointerdown", () => { sliding = j.id; stream.open(); });
+        range.addEventListener("input", () => { if (sliding === j.id) stream.send({ [j.id]: Number(range.value) }); });
+        const done = () => { if (sliding === j.id) { sliding = null; stream.end(); } };
+        range.addEventListener("pointerup", done); range.addEventListener("pointercancel", done); range.addEventListener("change", done);
+        for (const b of div.querySelectorAll(".jog button")) {
+          // Hold to jog: the target runs ahead of the arm at the chosen speed while the button is down.
+          let timer = null, target = null;
+          const start = (e) => {
+            e.preventDefault();
+            if (timer) return; // a second finger on the same button must not start a second run
+            try { b.setPointerCapture?.(e.pointerId); } catch {}
+            const joint = status?.joints.find((x) => x.id === j.id);
+            if (!joint || joint.position == null) return msg("no position for that joint", true);
+            target = joint.position; stream.open();
+            timer = setInterval(() => { target = clampTicks(j.id, target + (Number(b.dataset.d) * Number($("rate").value)) / 20); stream.send({ [j.id]: target }); }, 50);
+          };
+          const end = () => { if (timer) { clearInterval(timer); timer = null; stream.end(); } };
+          for (const ev of ["pointerup", "pointercancel", "lostpointercapture", "pointerleave", "blur"]) b.addEventListener(ev, end);
+          addEventListener("blur", end);
+          b.addEventListener("pointerdown", start);
+          b.addEventListener("contextmenu", (e) => e.preventDefault());
+        }
+        joints.append(div);
+        el = { div, pos: div.querySelector(".pos"), t: div.querySelector(".t"), range, buttons: div.querySelectorAll("button") };
+        built.set(j.id, el);
+      }
+      const hot = j.temperature >= 55, load = Math.abs(j.load ?? 0);
+      el.pos.textContent = j.position ?? "—";
+      el.pos.style.color = hot ? "var(--bad)" : load > 50 ? "var(--warn)" : "var(--fg)";
+      el.t.textContent = `${j.temperature ?? "—"}°C · ${load.toFixed(0)}%${j.torque ? " ·T" : ""}`;
+      if (sliding !== j.id && j.position != null) el.range.value = j.position;
+      el.div.classList.toggle("jam", d.jammed?.includes(j.id));
+      el.div.classList.toggle("drag", dragging === j.joint || sliding === j.id);
+      const locked = (d.driving !== null && d.driving !== "stream") || live !== null; // the page's own stream may run; a leader's may not be fought
+      el.range.disabled = locked; for (const b of el.buttons) b.disabled = locked;
+    }
+  }
+  function banner(d) {
+    const b = $("banner");
+    // The depth includes the margin: say where the part really is, and how much of that is margin.
+    const say = (v) => {
+      const part = v.link.replace(/_link$/, "").replace(/_so101_v1$/, "");
+      const marginMm = v.what === "table" ? settings?.floorMarginMm ?? 0 : settings?.baseMarginMm ?? 0;
+      const beyond = v.depth * 1000 - marginMm;
+      if (beyond > 0) return `${part} is ${beyond.toFixed(0)} mm ${v.what === "table" ? "below the table" : "inside the base"} (plus the ${marginMm} mm margin)`;
+      return `${part} is ${(-beyond).toFixed(0)} mm ${v.what === "table" ? "above the table" : "from the base"}, inside the ${marginMm} mm margin`;
+    };
+    if (d.jammed?.length) { b.className = "bad"; b.textContent = `jam: ${d.jammed.map((id) => NAMES[id] ?? id).join(", ")} pushed against something and stopped — back the leader off`; }
+    else if (d.blocked) { b.className = d.zone === "enforce" ? "bad" : "warn"; b.textContent = `${d.zone === "enforce" ? "held at the boundary" : "warning"}: ${say(d.blocked)}`; }
+    else if (d.violation) { b.className = "warn"; b.textContent = `the arm is ${say(d.violation)} (zone: ${d.zone})`; }
+    else b.className = "";
+  }
+  async function poll() {
+    try {
+      const d = await api("/status");
+      if (!d.ok) throw new Error();
+      status = d;
+      $("dot").className = "dot on";
+      $("state").textContent = d.driving === null ? "idle" : d.driving === "record" ? `recording ${d.recording}` : live ? `live · ${live.frames} frames` : d.driving;
+      $("stop").hidden = d.driving === null;
+      $("record").textContent = d.driving === "record" ? "■ Stop recording" : "● Record";
+      for (const id of ["hold", "releaseBtn", "play"]) $(id).disabled = d.driving !== null;
+      render(d); banner(d); applyModel(d);
+      $("strip").innerHTML = `<span>lowest part <b>${d.lowestMm ?? "—"} mm</b> above the table</span><span>zone <b>${d.zone}</b></span>`;
+    } catch { $("dot").className = "dot"; $("state").textContent = "no arm"; }
+    setTimeout(poll, 200);
+  }
+  (async () => {
+    limits = await api("/limits");
+    await loadSettings();
+    await loadPoses();
+    modelInfo = await api("/model.json");
+    if (modelInfo.ok) viewer.urdf = modelInfo.urdf; else { $("v3").hidden = true; $("pane3").classList.remove("on"); }
+    try {
+      const saved = JSON.parse(localStorage.getItem("so101.panes") || "null");
+      const usable = (pane) => pane === "pane1" || (pane === "pane2" && !$("v2").hidden) || (pane === "pane3" && modelInfo.ok);
+      const wanted = Array.isArray(saved) ? saved.filter(usable) : [];
+      if (wanted.length) for (const [btn, pane] of Object.entries(panes)) { const on = wanted.includes(pane); $(btn).classList.toggle("on", on); if (pane === "pane3") $(pane).classList.toggle("on", on); else showCam(cams[pane === "pane1" ? 0 : 1], on); }
+    } catch {}
+    poll();
+  })();
+</script>
+</body>
+</html>
